@@ -1,0 +1,39 @@
+.chord-sheet-wrapper {
+  font-size: 1.25rem;
+  line-height: 1.6;
+}
+
+.chord-sheet-wrapper .title {
+  font-size: 1.75rem;
+  margin: 0 0 0.25rem;
+}
+
+.chord-sheet-wrapper .paragraph {
+  margin-bottom: 1.25rem;
+}
+
+.chord-sheet-wrapper .row {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.chord-sheet-wrapper .column {
+  display: flex;
+  flex-direction: column;
+  white-space: pre;
+  margin-right: 0.2em;
+}
+
+.chord-sheet-wrapper .chord {
+  font-weight: 700;
+  color: #4da3ff;
+  min-height: 1.4em;
+}
+
+.chord-sheet-wrapper .lyrics {
+  color: inherit;
+}
+
+.chord-sheet-error {
+  color: #ff6b6b;
+}
