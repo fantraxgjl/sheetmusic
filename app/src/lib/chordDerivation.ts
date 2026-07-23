@@ -1,4 +1,5 @@
 import { getEssentia } from './essentiaEngine'
+import { estimateBassPitchClass, matchChordTemplate, medianVector, modeOf } from './chordTemplates'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type EssentiaInstance = any
@@ -12,8 +13,14 @@ export interface ChordSegment {
 }
 
 export const ANALYSIS_SAMPLE_RATE = 44100
-const FRAME_SIZE = 4096
-const HOP_SIZE = 2048
+// A 4096-sample frame at 44.1kHz gives ~10.8Hz/bin — coarser than the ~10-20Hz
+// gaps between bass-register notes, so bass notes were smearing across
+// adjacent pitch classes (confirmed empirically: sub-200Hz test chords
+// misidentified even from clean, non-decaying sine tones). 8192 halves that
+// to ~5.4Hz/bin at the cost of coarser time resolution (~0.19s/frame), an
+// easy trade since chords last well over that regardless.
+const FRAME_SIZE = 8192
+const HOP_SIZE = 4096
 // Frames quieter than this (peak amplitude on a [-1, 1] signal) are treated as
 // silence rather than run through spectral analysis — near-silent frames both
 // waste time and occasionally trip a native assertion inside essentia's WASM
@@ -32,18 +39,23 @@ function frameIsSilent(essentia: EssentiaInstance, frame: unknown): boolean {
   return peak < SILENCE_PEAK_THRESHOLD
 }
 
+const FIXED_WINDOW_SECONDS = 2
+
 /**
  * Derives a chord timeline from a mono Float32 PCM signal sampled at
  * ANALYSIS_SAMPLE_RATE. Pipeline: per-frame HPCP (harmonic pitch-class
  * profile, a more accurate chroma-like feature than a naive FFT-bin mapping)
- * -> beat tracking -> beat-synchronous chord estimation, falling back to
- * fixed-window estimation if beat tracking can't find enough beats (e.g. a
- * very short or rhythmically ambiguous recording).
+ * -> beat tracking -> per-beat-segment median HPCP -> custom chord-template
+ * matching (see chordTemplates.ts) -> falling back to fixed 2s windows if
+ * beat tracking can't find enough beats (e.g. a very short or rhythmically
+ * ambiguous recording).
  *
- * Only major/minor triads come out of essentia's chord detector — no 7ths,
- * sus chords, etc. Those will be approximated as their nearest major/minor
- * triad. That's a real accuracy ceiling of this algorithm, not a bug; the
- * correction step downstream exists because of exactly this kind of gap.
+ * essentia's own ChordsDetection/ChordsDetectionBeats only recognize
+ * major/minor triads; this derives the chord estimate itself from the raw
+ * HPCP vectors instead, against an extended vocabulary (7, maj7, m7, sus2,
+ * sus4, dim, aug). More chord qualities means more ways to misread a noisy
+ * real-world vector, so expect this to need more correction on
+ * extended-harmony songs than a plain major/minor chart would.
  */
 export async function deriveChordsFromAudio(signal: Float32Array): Promise<ChordSegment[]> {
   const essentia = await getEssentia()
@@ -51,14 +63,15 @@ export async function deriveChordsFromAudio(signal: Float32Array): Promise<Chord
 
   const frames = essentia.FrameGenerator(signal, FRAME_SIZE, HOP_SIZE)
   const numFrames = frames.size()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hpcpFrames: any[] = []
+  const hpcpFrames: number[][] = []
+  const bassClasses: (number | null)[] = []
   const silentFrame: number[] = new Array(12).fill(0)
 
   for (let i = 0; i < numFrames; i++) {
     const frame = frames.get(i)
     if (frameIsSilent(essentia, frame)) {
-      hpcpFrames.push(essentia.arrayToVector(new Float32Array(silentFrame)))
+      hpcpFrames.push(silentFrame)
+      bassClasses.push(null)
       continue
     }
     try {
@@ -66,58 +79,54 @@ export async function deriveChordsFromAudio(signal: Float32Array): Promise<Chord
       const spec = essentia.Spectrum(windowed, FRAME_SIZE).spectrum
       const peaks = essentia.SpectralPeaks(spec)
       const hpcp = essentia.HPCP(peaks.frequencies, peaks.magnitudes)
-      hpcpFrames.push(hpcp.hpcp)
+      hpcpFrames.push(Array.from(essentia.vectorToArray(hpcp.hpcp) as Float32Array))
+      bassClasses.push(
+        estimateBassPitchClass(
+          essentia.vectorToArray(peaks.frequencies) as Float32Array,
+          essentia.vectorToArray(peaks.magnitudes) as Float32Array
+        )
+      )
     } catch {
       // A single bad frame shouldn't take down the whole analysis.
-      hpcpFrames.push(essentia.arrayToVector(new Float32Array(silentFrame)))
+      hpcpFrames.push(silentFrame)
+      bassClasses.push(null)
     }
   }
-
-  const pcpSeq = new essentia.module.VectorVectorFloat()
-  for (const row of hpcpFrames) pcpSeq.push_back(row)
-
-  let chordNames: string[]
-  let strengths: Float32Array
-  let bounds: number[]
 
   const beatResult = essentia.BeatTrackerMultiFeature(essentia.arrayToVector(signal))
   const ticks = essentia.vectorToArray(beatResult.ticks) as Float32Array
 
+  let bounds: number[]
   if (ticks.length >= 2) {
-    const beatsResult = essentia.ChordsDetectionBeats(
-      pcpSeq,
-      beatResult.ticks,
-      'interbeat_median',
-      HOP_SIZE,
-      ANALYSIS_SAMPLE_RATE
-    )
-    chordNames = []
-    for (let i = 0; i < beatsResult.chords.size(); i++) chordNames.push(beatsResult.chords.get(i))
-    strengths = essentia.vectorToArray(beatsResult.strength)
     bounds = Array.from(ticks)
     // Extend the outer edges to cover the whole recording rather than just
     // first-beat..last-beat.
     bounds[0] = 0
     bounds[bounds.length - 1] = duration
   } else {
-    // No reliable beat grid (e.g. a very short clip) — fall back to a fixed
-    // 2s sliding window, chordsheetjs's own default granularity.
-    const chordsResult = essentia.ChordsDetection(pcpSeq, HOP_SIZE, ANALYSIS_SAMPLE_RATE, 2)
-    chordNames = []
-    for (let i = 0; i < chordsResult.chords.size(); i++) chordNames.push(chordsResult.chords.get(i))
-    strengths = essentia.vectorToArray(chordsResult.strength)
-    bounds = chordNames.map((_, i) => (i * HOP_SIZE) / ANALYSIS_SAMPLE_RATE)
+    // No reliable beat grid (e.g. a very short clip) — fall back to fixed windows.
+    bounds = []
+    for (let t = 0; t < duration; t += FIXED_WINDOW_SECONDS) bounds.push(t)
     bounds.push(duration)
   }
 
-  return mergeAdjacentSegments(
-    chordNames.map((chord, i) => ({
-      chord,
-      startTime: bounds[i],
-      endTime: bounds[i + 1],
-      strength: strengths[i] ?? 0,
-    }))
-  )
+  const segments: ChordSegment[] = []
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const startTime = bounds[i]
+    const endTime = bounds[i + 1]
+    const frameIndices: number[] = []
+    for (let frameIdx = 0; frameIdx < hpcpFrames.length; frameIdx++) {
+      const frameTime = (frameIdx * HOP_SIZE) / ANALYSIS_SAMPLE_RATE
+      if (frameTime >= startTime && frameTime < endTime) frameIndices.push(frameIdx)
+    }
+    const framesInSegment = frameIndices.length > 0 ? frameIndices.map((idx) => hpcpFrames[idx]) : [silentFrame]
+    const bassInSegment = frameIndices.map((idx) => bassClasses[idx])
+    const aggregated = medianVector(framesInSegment)
+    const match = matchChordTemplate(aggregated, modeOf(bassInSegment))
+    segments.push({ chord: match.chord, startTime, endTime, strength: Math.max(0, match.score) })
+  }
+
+  return mergeAdjacentSegments(segments)
 }
 
 function formatTimestamp(seconds: number): string {
@@ -141,7 +150,7 @@ const TIMESTAMP_EVERY_N_LINES = 2
 export function chordSegmentsToChordPro(segments: ChordSegment[]): string {
   const lines: string[] = [
     '# Chords derived from your recording — timestamps are approximate.',
-    '# Major/minor triads only (no 7ths/sus/etc.) — double-check against what you played.',
+    '# Extended chords (7/sus/etc.) are more error-prone than plain major/minor — double-check against what you played.',
     '',
   ]
   for (let i = 0; i < segments.length; i += CHORDS_PER_LINE) {

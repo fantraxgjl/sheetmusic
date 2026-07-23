@@ -184,17 +184,44 @@ Phases 0-4 are implemented (`app/`). Notable findings from building phase 4
   also swapped for uncompressed PCM (`audio/webm;codecs=pcm`) — both were
   measurable accuracy losses, not just theoretical ones (see
   `src/lib/audioCapture.ts`).
-- **Real accuracy ceiling**: essentia's `ChordsDetection`/`ChordsDetectionBeats`
-  only output major/minor triads — no 7ths, sus chords, etc. Those will come
-  out as their nearest triad. This is inherent to the algorithm, not a bug.
-- **Validation performed**: a synthetic-but-musically-structured test signal
-  (decaying, harmonically-rich notes on a real rhythmic grid — not pure sine
-  tones) run through the full pipeline (beat tracking → beat-synchronous HPCP
-  → chord estimation), cross-checked between a clean direct-file test and the
-  full record→encode→decode→analyze browser pipeline. Both correctly recover
-  the underlying chord progression, with occasional 1-beat mislabeling right
-  at chord-change boundaries in both cases (an essentia/algorithm
-  characteristic, not a pipeline bug).
+- **Extended chord vocabulary** (`src/lib/chordTemplates.ts`): essentia's
+  built-in `ChordsDetection`/`ChordsDetectionBeats` only recognize major/minor
+  triads. Replaced them with a custom cosine-similarity template matcher over
+  the same HPCP vectors, covering major/minor/7/maj7/m7/sus2/sus4/dim/aug.
+  Three real issues turned up while building and tuning this, all fixed:
+  - **Frequency resolution**: 4096-sample frames at 44.1kHz gave only
+    ~10.8Hz/bin — coarser than the 10-20Hz gaps between bass-register notes,
+    so bass chords were smearing across adjacent pitch classes even from
+    clean, non-decaying test tones. Fixed by increasing to 8192 samples
+    (~5.4Hz/bin), trading time resolution for frequency resolution (an easy
+    call — chords last well over the resulting ~0.19s/frame regardless).
+  - **Fundamental sus/6th ambiguity**: some chord qualities are *literally
+    the same pitch-class set* as a different chord on a different root —
+    e.g. Fsus4 {F,Bb,C} and Bbsus2 {Bb,C,F} are identical once folded into a
+    chroma vector; no amount of chroma-matching can ever tell them apart.
+    Fixed by estimating a cheap "bass note" from the lowest strong spectral
+    peak per segment and using it to break near-ties toward the chord whose
+    root matches the bass.
+  - **More qualities means more false positives**: confirmed empirically —
+    adding the extended vocabulary measurably increased spurious 7th/sus
+    labels on audio that was actually plain major/minor (a decaying overtone
+    or a blended transition frame was enough to tip a template match). Fixed
+    with a margin requiring an extended-quality match to clearly beat the
+    best plain-triad match before it's accepted, rather than treat all
+    qualities as equally likely candidates.
+  - This is a real coverage/noise tradeoff, not a free upgrade: 7th/sus
+    chords are now recognized when actually present, but expect more
+    correction on extended-harmony songs than a plain major/minor chart
+    would need.
+- **Validation performed**: synthetic-but-musically-structured test signals
+  (decaying, harmonically-rich notes on a real rhythmic grid, one using plain
+  triads and one using G7/Fsus4) run through the full pipeline and
+  cross-checked between a clean direct-file test and the complete
+  record→encode→decode→resample→analyze browser pipeline. Final tuned result:
+  all chords in both progressions are correctly recovered at least once
+  (several segments cleanly and consistently), with some boundary noise and
+  occasional alternation on the extended chords — an honest reflection of
+  real ambiguity, not a pipeline bug.
 - **Not validated**: real commercial recordings. This environment has no
   network access to legally obtain one, and downloading copyrighted audio
   isn't something to route around that with. Testing against real playing is
