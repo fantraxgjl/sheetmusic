@@ -165,3 +165,37 @@ first isn't wasted effort even though live-play was the original hook.
 - Multi-user accounts, sharing, or collaboration features.
 - Full melodic transcription / notation output — this is a chord+lyric
   chart tool, not a music notation app.
+
+## 8. Status (phases 0-4)
+
+Phases 0-4 are implemented (`app/`). Notable findings from building phase 4
+(mic-capture chord derivation):
+
+- **essentia.js's default/Node entry point silently fails under Vite** — it
+  imports without error but never actually finishes instantiating its WASM,
+  so calling any algorithm throws. The fix was importing its browser-targeted
+  factory build directly (`essentia.js/dist/essentia-wasm.web.js` +
+  `essentia.js/dist/essentia.js-core.es.js`) with the `.wasm` binary copied
+  into `public/` and an explicit `locateFile` — see `src/lib/essentiaEngine.ts`
+  for the full explanation.
+- **`getUserMedia`'s default speech-call DSP** (echo cancellation, noise
+  suppression, auto gain control) meaningfully distorts music and was
+  disabled explicitly. **`MediaRecorder`'s default lossy Opus encoding** was
+  also swapped for uncompressed PCM (`audio/webm;codecs=pcm`) — both were
+  measurable accuracy losses, not just theoretical ones (see
+  `src/lib/audioCapture.ts`).
+- **Real accuracy ceiling**: essentia's `ChordsDetection`/`ChordsDetectionBeats`
+  only output major/minor triads — no 7ths, sus chords, etc. Those will come
+  out as their nearest triad. This is inherent to the algorithm, not a bug.
+- **Validation performed**: a synthetic-but-musically-structured test signal
+  (decaying, harmonically-rich notes on a real rhythmic grid — not pure sine
+  tones) run through the full pipeline (beat tracking → beat-synchronous HPCP
+  → chord estimation), cross-checked between a clean direct-file test and the
+  full record→encode→decode→analyze browser pipeline. Both correctly recover
+  the underlying chord progression, with occasional 1-beat mislabeling right
+  at chord-change boundaries in both cases (an essentia/algorithm
+  characteristic, not a pipeline bug).
+- **Not validated**: real commercial recordings. This environment has no
+  network access to legally obtain one, and downloading copyrighted audio
+  isn't something to route around that with. Testing against real playing is
+  the real proof and needs to happen once this runs on your own device.

@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import { validateChordPro } from '../lib/song'
 import { convertChordsOverWordsToChordPro } from '../lib/chordsOverWords'
+import type { SyncedLyricLine } from '../lib/lyrics'
+import type { ChordSegment } from '../lib/chordDerivation'
+import { chordSegmentsToChordPro } from '../lib/chordDerivation'
+import { mergeChordsWithPlainLyrics, mergeChordsWithSyncedLyrics } from '../lib/mergeChordsWithLyrics'
 import { LyricsSearch } from './LyricsSearch'
+import { RecordChords } from './RecordChords'
 
 const CHORDPRO_PLACEHOLDER = `{title: Song Title}
 {artist: Artist Name}
@@ -27,6 +32,10 @@ export function AddSongForm({
   const [body, setBody] = useState(initial?.body ?? '')
   const [quickPaste, setQuickPaste] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Kept only as long as `body` still is (or is derived from) those exact
+  // synced lines — cleared on any edit that could invalidate the alignment,
+  // so a later "record audio" pass doesn't align against stale timestamps.
+  const [syncedLyricLines, setSyncedLyricLines] = useState<SyncedLyricLine[] | undefined>(undefined)
   const isEdit = Boolean(initial)
 
   function handleConvert() {
@@ -43,22 +52,48 @@ export function AddSongForm({
     try {
       const converted = convertChordsOverWordsToChordPro(quickPaste)
       setBody(converted)
+      setSyncedLyricLines(undefined)
       setError(null)
     } catch (err) {
       setError(`Couldn't convert that chart: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
-  function handleInsertLyrics(lyrics: string) {
+  function handleInsertLyrics(lyrics: string, syncedLines?: SyncedLyricLine[]) {
     if (
       body.trim() &&
       !window.confirm(
-        'This will replace the ChordPro text below with the fetched lyrics (no chords yet — add those after). Continue?'
+        'This will replace the ChordPro text below with the fetched lyrics (no chords yet — add those after, or use "Record audio to derive chords" below to fill them in automatically). Continue?'
       )
     ) {
       return
     }
     setBody(lyrics)
+    setSyncedLyricLines(syncedLines)
+    setError(null)
+  }
+
+  function handleBodyChange(value: string) {
+    setBody(value)
+    setSyncedLyricLines(undefined)
+  }
+
+  function handleDerivedChords(segments: ChordSegment[]) {
+    // Prefer a real time-based merge over synced lyric timestamps when we
+    // have them; fall back to a proportional-by-line guess against whatever
+    // lyrics are already there; only fall back to a chord-only skeleton (and
+    // ask before clobbering) when there's nothing to merge onto.
+    if (syncedLyricLines) {
+      setBody(mergeChordsWithSyncedLyrics(segments, syncedLyricLines))
+      setError(null)
+      return
+    }
+    if (body.trim()) {
+      setBody(mergeChordsWithPlainLyrics(segments, body.split('\n')))
+      setError(null)
+      return
+    }
+    setBody(chordSegmentsToChordPro(segments))
     setError(null)
   }
 
@@ -107,11 +142,13 @@ export function AddSongForm({
         </div>
       </details>
 
+      <RecordChords onDerived={handleDerivedChords} />
+
       <label>
         ChordPro text
         <textarea
           value={body}
-          onChange={(e) => setBody(e.target.value)}
+          onChange={(e) => handleBodyChange(e.target.value)}
           placeholder={CHORDPRO_PLACEHOLDER}
           rows={14}
         />

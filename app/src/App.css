@@ -173,6 +173,23 @@ button.danger {
   color: #ccc;
 }
 
+.record-chords-hint {
+  font-size: 0.85rem;
+  color: #999;
+  margin: 0;
+}
+
+.record-chords-actions {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.record-chords-timer {
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
 .form-error {
   color: #ff8080;
   font-size: 0.9rem;

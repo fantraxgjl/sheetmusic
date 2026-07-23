@@ -30,7 +30,10 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
+        // The essentia.js WASM binary (~2MB) is well over workbox's default
+        // 2MB precache cutoff, so it needs to be raised explicitly.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
     }),
   ],

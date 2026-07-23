@@ -30,3 +30,23 @@ export function stripLrcTimestamps(syncedLyrics: string): string {
     .map((line) => line.replace(/^\[\d{2}:\d{2}(?:\.\d{1,3})?\]\s*/, ''))
     .join('\n')
 }
+
+export interface SyncedLyricLine {
+  time: number
+  text: string
+}
+
+const LRC_TIMESTAMP = /^\[(\d{2}):(\d{2}(?:\.\d{1,3})?)\]\s*(.*)$/
+
+/** Parses LRC-format synced lyrics into {time, text} lines, dropping non-timestamped lines (e.g. metadata tags). */
+export function parseLrcLines(syncedLyrics: string): SyncedLyricLine[] {
+  const lines: SyncedLyricLine[] = []
+  for (const rawLine of syncedLyrics.split('\n')) {
+    const match = LRC_TIMESTAMP.exec(rawLine)
+    if (!match) continue
+    const minutes = Number(match[1])
+    const seconds = Number(match[2])
+    lines.push({ time: minutes * 60 + seconds, text: match[3] })
+  }
+  return lines
+}

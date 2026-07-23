@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { searchLyrics, stripLrcTimestamps, type LyricsSearchResult } from '../lib/lyrics'
+import { parseLrcLines, searchLyrics, stripLrcTimestamps, type LyricsSearchResult, type SyncedLyricLine } from '../lib/lyrics'
 
 export function LyricsSearch({
   title,
@@ -8,7 +8,7 @@ export function LyricsSearch({
 }: {
   title: string
   artist: string
-  onInsert: (lyrics: string) => void
+  onInsert: (lyrics: string, syncedLines?: SyncedLyricLine[]) => void
 }) {
   const [results, setResults] = useState<LyricsSearchResult[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -35,9 +35,13 @@ export function LyricsSearch({
   }
 
   function handleInsert(result: LyricsSearchResult) {
-    const lyrics = result.plainLyrics || (result.syncedLyrics ? stripLrcTimestamps(result.syncedLyrics) : null)
-    if (!lyrics) return
-    onInsert(lyrics)
+    if (result.plainLyrics) {
+      onInsert(result.plainLyrics)
+      return
+    }
+    if (result.syncedLyrics) {
+      onInsert(stripLrcTimestamps(result.syncedLyrics), parseLrcLines(result.syncedLyrics))
+    }
   }
 
   return (
