@@ -132,6 +132,47 @@ button.danger {
   gap: 0.5rem;
 }
 
+.quick-paste {
+  border: 1px dashed #444;
+  border-radius: 0.5rem;
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.quick-paste summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.quick-paste label {
+  margin-top: 0.5rem;
+}
+
+.lyrics-search-actions {
+  display: flex;
+}
+
+.lyrics-results {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lyrics-results li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
 .form-error {
   color: #ff8080;
   font-size: 0.9rem;
