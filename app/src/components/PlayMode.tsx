@@ -5,6 +5,7 @@ import { startLiveListening, type LiveListeningHandle } from '../lib/liveListeni
 import { PlaySheet } from './PlaySheet'
 
 const CONFIDENCE_THRESHOLD = 0.65
+const STAGE_MODE_KEY = 'piano-improv-stage-mode'
 
 export function PlayMode({
   song,
@@ -23,6 +24,11 @@ export function PlayMode({
   const [listening, setListening] = useState(false)
   const [confidence, setConfidence] = useState(0)
   const [listenError, setListenError] = useState<string | null>(null)
+  const [stageMode, setStageMode] = useState(() => localStorage.getItem(STAGE_MODE_KEY) === 'true')
+
+  useEffect(() => {
+    localStorage.setItem(STAGE_MODE_KEY, String(stageMode))
+  }, [stageMode])
 
   const currentIndexRef = useRef(currentIndex)
   useEffect(() => {
@@ -83,11 +89,17 @@ export function PlayMode({
   const noChords = sequence.length === 0
 
   return (
-    <div className="play-mode">
+    <div className={`play-mode${stageMode ? ' stage-mode' : ''}`}>
       <div className="play-mode-header">
         <button onClick={onBack}>&larr; Back</button>
         <h1>{song.title}</h1>
-        <div />
+        <button
+          onClick={() => setStageMode((v) => !v)}
+          className={stageMode ? 'listening-active' : ''}
+          aria-label="Toggle stage mode (larger text, higher contrast)"
+        >
+          Stage mode
+        </button>
       </div>
 
       {noChords ? (

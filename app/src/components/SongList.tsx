@@ -7,11 +7,13 @@ export function SongList({
   onSelect,
   onAdd,
   onImportRequested,
+  onOpenSetlists,
 }: {
   songs: SongRecord[]
   onSelect: (id: string) => void
   onAdd: () => void
   onImportRequested: (songs: SongRecord[]) => void
+  onOpenSetlists: () => void
 }) {
   const [query, setQuery] = useState('')
   const [importError, setImportError] = useState<string | null>(null)
@@ -55,6 +57,7 @@ export function SongList({
       <div className="song-list-header">
         <h1>Your songs</h1>
         <div className="song-list-actions">
+          <button onClick={onOpenSetlists}>Setlists</button>
           <button onClick={handleExport} disabled={songs.length === 0}>
             Export
           </button>

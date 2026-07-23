@@ -291,3 +291,49 @@ are exactly the conditions this was designed to tolerate but can't be tested
 here; the confidence threshold and dwell timing (0.65, 2×300ms) are
 reasonable starting points, not empirically tuned against real playing, and
 likely the first things worth adjusting once you've tried it.
+
+## 10. Status (phase 6 — partial)
+
+Phase 6 bundles four things that don't all belong in the same bucket: three
+are pure client-side features with no new decisions attached, and one (cross-
+device sync) needs a real infrastructure choice — hosting, possibly recurring
+cost, an account somewhere — that isn't mine to make unilaterally. The three
+client-side pieces are done:
+
+- **Setlists**: create a named, ordered list of songs (`lib/setlist.ts`, a
+  second IndexedDB store alongside `songs`, version-bumped with an additive
+  upgrade path so existing libraries aren't disturbed). Opening a song from
+  a setlist carries that context through the whole flow — Prev/Next song
+  navigation in the viewer, Play mode's Back button returns to the song
+  (not the plain list), and the song's own Back button returns to the
+  setlist. Verified end-to-end in a browser: order preserved, navigation
+  correct in both directions, context survives a trip through Play mode.
+- **Offline resilience**: added an online/offline banner
+  (`lib/useOnlineStatus.ts`) since lyrics search is the only feature that
+  needs a network. More importantly, actually verified the PWA offline
+  claim rather than assuming vite-plugin-pwa's config was sufficient: built
+  the production bundle, served it, loaded once (installing the service
+  worker), then went offline and reloaded — the app shell, a previously
+  saved song, and its rendered chord sheet all came back with zero network
+  access.
+- **Stage mode**: a per-session toggle in Play mode (persisted via
+  localStorage) that substantially increases font size and contrast for
+  glancing at a chart under stage lighting — verified visually via
+  screenshot.
+
+**Still open — cross-device sync**: this needs an actual decision, not an
+assumption. Realistic options, roughly in order of setup effort:
+1. **Manual sync via the existing export/import** — zero new infrastructure
+   (already built in phase 1); you'd export on one device and import on
+   another through whatever file-sharing you already use (a cloud drive
+   folder, AirDrop, email). Free, but not automatic.
+2. **A small hosted backend** (e.g. a lightweight API + SQLite/Postgres) —
+   real sync, but means picking a host, likely a small recurring cost, and
+   something to maintain.
+3. **A managed backend-as-a-service** (e.g. Supabase/Firebase) — less to
+   build than #2, but requires creating an account there and wiring up its
+   SDK/auth even for single-user use.
+
+None of these is clearly "correct" without knowing whether you'd rather
+avoid any ongoing cost/maintenance (favors #1), want it to feel automatic
+(favors #2/#3), or already use one of these providers for something else.
