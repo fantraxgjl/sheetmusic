@@ -1,0 +1,37 @@
+.play-sheet {
+  font-size: 1.4rem;
+  line-height: 1.8;
+}
+
+.play-row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.play-pair {
+  display: flex;
+  flex-direction: column;
+  margin-right: 0.3em;
+  padding: 0.1em 0.15em;
+  border-radius: 0.3em;
+  white-space: pre;
+}
+
+.play-chord {
+  font-weight: 700;
+  color: #4da3ff;
+  min-height: 1.3em;
+}
+
+.play-pair.current {
+  background: #4da3ff;
+}
+
+.play-pair.current .play-chord {
+  color: #0b1420;
+}
+
+.play-pair.current .play-lyrics {
+  color: #0b1420;
+}

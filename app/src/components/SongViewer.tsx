@@ -7,11 +7,13 @@ export function SongViewer({
   onBack,
   onEdit,
   onDelete,
+  onPlay,
 }: {
   song: SongRecord
   onBack: () => void
   onEdit: (id: string) => void
   onDelete: (id: string) => void
+  onPlay: (id: string, transposeSemitones: number) => void
 }) {
   const [transpose, setTranspose] = useState(0)
 
@@ -20,6 +22,7 @@ export function SongViewer({
       <div className="song-viewer-header">
         <button onClick={onBack}>&larr; Back</button>
         <div className="song-viewer-actions">
+          <button onClick={() => onPlay(song.id, transpose)}>Play</button>
           <button onClick={() => onEdit(song.id)}>Edit</button>
           <button className="danger" onClick={() => onDelete(song.id)}>
             Delete

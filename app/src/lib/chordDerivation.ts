@@ -1,8 +1,6 @@
 import { getEssentia } from './essentiaEngine'
-import { estimateBassPitchClass, matchChordTemplate, medianVector, modeOf } from './chordTemplates'
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type EssentiaInstance = any
+import { matchChordTemplate, medianVector, modeOf } from './chordTemplates'
+import { analyzeFrame } from './hpcpAnalysis'
 
 export interface ChordSegment {
   /** e.g. 'C', 'Am', 'F#m' — already valid ChordPro syntax — or 'N' for no chord detected (silence). */
@@ -21,23 +19,6 @@ export const ANALYSIS_SAMPLE_RATE = 44100
 // easy trade since chords last well over that regardless.
 const FRAME_SIZE = 8192
 const HOP_SIZE = 4096
-// Frames quieter than this (peak amplitude on a [-1, 1] signal) are treated as
-// silence rather than run through spectral analysis — near-silent frames both
-// waste time and occasionally trip a native assertion inside essentia's WASM
-// binding (observed empirically: a fully-silent frame can throw there).
-const SILENCE_PEAK_THRESHOLD = 0.005
-
-// frames.get(i) below returns essentia's own VectorFloat wrapper (size()/get()),
-// not a plain typed array, hence vectorToArray() to get something indexable.
-function frameIsSilent(essentia: EssentiaInstance, frame: unknown): boolean {
-  const samples = essentia.vectorToArray(frame) as Float32Array
-  let peak = 0
-  for (let i = 0; i < samples.length; i++) {
-    const abs = Math.abs(samples[i])
-    if (abs > peak) peak = abs
-  }
-  return peak < SILENCE_PEAK_THRESHOLD
-}
 
 const FIXED_WINDOW_SECONDS = 2
 
@@ -68,26 +49,16 @@ export async function deriveChordsFromAudio(signal: Float32Array): Promise<Chord
   const silentFrame: number[] = new Array(12).fill(0)
 
   for (let i = 0; i < numFrames; i++) {
-    const frame = frames.get(i)
-    if (frameIsSilent(essentia, frame)) {
-      hpcpFrames.push(silentFrame)
-      bassClasses.push(null)
-      continue
-    }
-    try {
-      const windowed = essentia.Windowing(frame, true, FRAME_SIZE, 'hann').frame
-      const spec = essentia.Spectrum(windowed, FRAME_SIZE).spectrum
-      const peaks = essentia.SpectralPeaks(spec)
-      const hpcp = essentia.HPCP(peaks.frequencies, peaks.magnitudes)
-      hpcpFrames.push(Array.from(essentia.vectorToArray(hpcp.hpcp) as Float32Array))
-      bassClasses.push(
-        estimateBassPitchClass(
-          essentia.vectorToArray(peaks.frequencies) as Float32Array,
-          essentia.vectorToArray(peaks.magnitudes) as Float32Array
-        )
-      )
-    } catch {
-      // A single bad frame shouldn't take down the whole analysis.
+    // frames.get(i) is essentia's own VectorFloat wrapper, not a plain typed
+    // array — convert once so analyzeFrame has one calling convention
+    // regardless of whether the samples came from FrameGenerator or a raw
+    // buffer (as in the live-listening path).
+    const frame = essentia.vectorToArray(frames.get(i)) as Float32Array
+    const analysis = analyzeFrame(essentia, frame)
+    if (analysis) {
+      hpcpFrames.push(analysis.hpcp)
+      bassClasses.push(analysis.bassPitchClass)
+    } else {
       hpcpFrames.push(silentFrame)
       bassClasses.push(null)
     }

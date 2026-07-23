@@ -2,11 +2,17 @@ import { useEffect, useState } from 'react'
 import { SongList } from './components/SongList'
 import { AddSongForm } from './components/AddSongForm'
 import { SongViewer } from './components/SongViewer'
+import { PlayMode } from './components/PlayMode'
 import { createSongRecord, updateSongRecord, type SongRecord } from './lib/song'
 import { deleteSong, listSongs, saveSong, saveSongs } from './lib/db'
 import './App.css'
 
-type View = { name: 'list' } | { name: 'add' } | { name: 'song'; id: string } | { name: 'edit'; id: string }
+type View =
+  | { name: 'list' }
+  | { name: 'add' }
+  | { name: 'song'; id: string }
+  | { name: 'edit'; id: string }
+  | { name: 'play'; id: string; transposeSemitones: number }
 
 function App() {
   const [songs, setSongs] = useState<SongRecord[]>([])
@@ -72,6 +78,19 @@ function App() {
               onBack={() => setView({ name: 'list' })}
               onEdit={(id) => setView({ name: 'edit', id })}
               onDelete={handleDelete}
+              onPlay={(id, transposeSemitones) => setView({ name: 'play', id, transposeSemitones })}
+            />
+          )
+        })()}
+      {view.name === 'play' &&
+        (() => {
+          const song = songs.find((s) => s.id === view.id)
+          if (!song) return null
+          return (
+            <PlayMode
+              song={song}
+              transposeSemitones={view.transposeSemitones}
+              onBack={() => setView({ name: 'song', id: song.id })}
             />
           )
         })()}

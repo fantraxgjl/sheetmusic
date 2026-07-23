@@ -1,3 +1,5 @@
+import { parseChordName } from './chordName'
+
 /**
  * Cosine-similarity chord-template matching over a 12-bin pitch-class
  * (HPCP/chroma) vector — extends essentia's built-in chord detector, which
@@ -172,6 +174,41 @@ export function estimateBassPitchClass(frequencies: ArrayLike<number>, magnitude
 
   const semitonesFromA440 = 12 * Math.log2(bestFreq / 440)
   return ((Math.round(semitonesFromA440) % 12) + 12) % 12
+}
+
+// Fallback template for a chord quality outside the recognized vocabulary
+// (add9, 6, m7b5, 9/11/13, etc.) — root + fifth is present in nearly every
+// chord quality, so it's a reasonable "is roughly the right chord" check
+// when we can't score the exact quality.
+const ROOT_AND_FIFTH_INTERVALS = [0, 7]
+
+/**
+ * Scores how well a live pitch-class vector matches one *specific* named
+ * chord (as opposed to matchChordTemplate's open-ended search across the
+ * whole vocabulary) — this is the "is the expected chord present right now"
+ * check play-along mode needs, a bounded problem against a known target
+ * rather than open classification. Accepts arbitrary user-written chord
+ * spellings via parseChordName; qualities outside chordTemplates.ts's
+ * vocabulary fall back to a root+fifth check rather than failing outright.
+ */
+export function scoreChordPresence(pitchClassVector: number[], chordText: string): number {
+  const parsed = parseChordName(chordText)
+  if (!parsed) return 0
+
+  const energy = pitchClassVector.reduce((sum, v) => sum + v * v, 0)
+  if (energy < MIN_ENERGY) return 0
+
+  const quality = parsed.quality != null ? QUALITIES.find((q) => q.suffix === parsed.quality) : undefined
+  const intervals = quality ? quality.intervals : ROOT_AND_FIFTH_INTERVALS
+
+  const templateVector = new Array(12).fill(0)
+  for (const interval of intervals) templateVector[(parsed.rootPitchClass + interval) % 12] = 1
+  const templateUnitVector = normalize(templateVector)
+
+  const unitVector = normalize(pitchClassVector)
+  let score = 0
+  for (let i = 0; i < 12; i++) score += unitVector[i] * templateUnitVector[i]
+  return Math.max(0, score)
 }
 
 /** Most common value in a list, ignoring nulls — used to pick a segment's bass pitch class from its frames. */

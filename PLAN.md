@@ -226,3 +226,68 @@ Phases 0-4 are implemented (`app/`). Notable findings from building phase 4
   network access to legally obtain one, and downloading copyrighted audio
   isn't something to route around that with. Testing against real playing is
   the real proof and needs to happen once this runs on your own device.
+
+## 9. Status (phase 5 — live play)
+
+Phase 5 (mic listening + autoscroll while playing) is implemented: a "Play"
+button on the song viewer opens a full-screen play-along mode
+(`src/components/PlayMode.tsx`) that highlights the current chord/lyric
+position (`PlaySheet.tsx`, a custom renderer built directly from
+chordsheetjs's parsed line/item structure rather than its HTML formatter, so
+each chord can be given a sequence index and scrolled into view), listens via
+the mic, and auto-advances when the expected chord is confidently sustained.
+Manual override (Space/→ to advance, ← to go back) always works, whether or
+not listening is active, and works from any position.
+
+Design notes:
+
+- **Bounded matching, not classification**: at each ~300ms tick, a ~1s
+  rolling audio snapshot is scored against *one specific expected chord*
+  (`chordTemplates.scoreChordPresence`) rather than run through open-ended
+  classification — confirming "is this chord present" is a much easier,
+  lower-noise problem than "what chord is this," which is what makes
+  real-time confirmation tractable on top of an already-approximate
+  detection pipeline.
+- **Arbitrary chord-spelling support**: expected chords come from whatever
+  the user actually typed in the ChordPro body (any spelling — flats, slash
+  bass, add9, etc.), not just the vocabulary chordTemplates.ts can derive
+  from scratch. `chordName.ts` uses chordsheetjs's own `Chord.parse()` to
+  turn arbitrary chord text into a root pitch class + quality, falling back
+  to a root+fifth check for qualities outside the recognized vocabulary
+  (add9, 6, m7b5, 9/11/13, etc.) rather than failing outright.
+  `Chord.parse()` also correctly handles slash-bass chords (C/E) and
+  enharmonic spellings (Bb == A#).
+- **Transpose-aware**: live matching uses whatever transposition is
+  currently displayed, not the song's stored original — otherwise a
+  transposed chart would show one chord while matching against another.
+- **Dwell requirement**: two consecutive confident ticks (~600ms sustained)
+  are required before advancing, so a single stray overtone or passing note
+  can't trigger a false advance.
+- A real implementation gotcha: essentia's `Windowing` needs its own vector
+  wrapper (`essentia.arrayToVector(...)`), not a plain `Float32Array`, even
+  though `FrameGenerator` elsewhere hands out that wrapper directly for free
+  — passing a raw array through silently computed garbage rather than
+  erroring, until it was checked deliberately. The frame-analysis logic
+  (windowing → spectrum → peaks → HPCP → bass estimate) was factored into
+  one shared function (`hpcpAnalysis.ts`) used by both phase 4's offline
+  derivation and phase 5's live listening, specifically so a bug like that
+  only has one place to hide rather than two copies silently drifting apart.
+
+**Validation performed**: end-to-end in a real browser, using Chromium's
+fake-audio-capture-device flag to feed a synthetic C→G7→Am→Fsus4 recording as
+live "microphone" input against a song with a matching chord chart —
+position correctly advanced through all four chords in order, in sync with
+the actual audio, with confidence rising and falling sensibly at
+transitions. As a negative control, the same audio was fed against a song
+with a *deliberately wrong* chord chart (Dm/Bb/E/F#) — confidence never
+crossed the advance threshold and the position correctly never moved,
+confirming the first result wasn't a false pass. Manual override (Next/
+Previous) was confirmed to work independent of listening state.
+
+**Not validated**: real playing on a real piano through a real microphone —
+same caveat as phase 4. Background noise, room acoustics, and actual
+playing dynamics (sustain pedal blur, passing tones during improvisation)
+are exactly the conditions this was designed to tolerate but can't be tested
+here; the confidence threshold and dwell timing (0.65, 2×300ms) are
+reasonable starting points, not empirically tuned against real playing, and
+likely the first things worth adjusting once you've tried it.
