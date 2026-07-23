@@ -46,3 +46,11 @@ export async function deleteSong(id: string): Promise<void> {
   const db = await getDB()
   await db.delete('songs', id)
 }
+
+/** Upserts by id — used to restore/merge a library backup. */
+export async function saveSongs(songs: SongRecord[]): Promise<void> {
+  const db = await getDB()
+  const tx = db.transaction('songs', 'readwrite')
+  await Promise.all(songs.map((song) => tx.store.put(song)))
+  await tx.done
+}

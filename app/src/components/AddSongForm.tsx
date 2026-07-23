@@ -7,16 +7,19 @@ const PLACEHOLDER = `{title: Song Title}
 [C]Lyrics go [G]here, chords [Am]above the [F]words`
 
 export function AddSongForm({
+  initial,
   onSave,
   onCancel,
 }: {
+  initial?: { title: string; artist: string; body: string }
   onSave: (input: { title: string; artist: string; body: string }) => void
   onCancel: () => void
 }) {
-  const [title, setTitle] = useState('')
-  const [artist, setArtist] = useState('')
-  const [body, setBody] = useState('')
+  const [title, setTitle] = useState(initial?.title ?? '')
+  const [artist, setArtist] = useState(initial?.artist ?? '')
+  const [body, setBody] = useState(initial?.body ?? '')
   const [error, setError] = useState<string | null>(null)
+  const isEdit = Boolean(initial)
 
   function handleSave() {
     if (!body.trim()) {
@@ -35,7 +38,7 @@ export function AddSongForm({
 
   return (
     <div className="add-song-form">
-      <h1>Add a song</h1>
+      <h1>{isEdit ? 'Edit song' : 'Add a song'}</h1>
       <label>
         Title
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Song title" />
@@ -56,7 +59,7 @@ export function AddSongForm({
       {error && <p className="form-error">{error}</p>}
       <div className="form-actions">
         <button onClick={onCancel}>Cancel</button>
-        <button onClick={handleSave}>Save</button>
+        <button onClick={handleSave}>{isEdit ? 'Save changes' : 'Save'}</button>
       </div>
     </div>
   )

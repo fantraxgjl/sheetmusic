@@ -45,6 +45,23 @@ button.danger {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.song-list-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.song-search {
+  width: 100%;
+  font: inherit;
+  padding: 0.5rem 0.7rem;
+  margin-top: 1rem;
+  border-radius: 0.4rem;
+  border: 1px solid #444;
+  background: #14161b;
+  color: inherit;
 }
 
 .song-list ul {
@@ -123,4 +140,23 @@ button.danger {
 .song-viewer-header {
   display: flex;
   justify-content: space-between;
+}
+
+.song-viewer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.transpose-control {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: #ccc;
+  font-size: 0.9rem;
+}
+
+.transpose-value {
+  min-width: 2ch;
+  text-align: center;
+  font-weight: 600;
 }

@@ -1,36 +1,106 @@
+import { useMemo, useRef, useState } from 'react'
 import type { SongRecord } from '../lib/song'
+import { exportLibraryJson, parseLibraryImport } from '../lib/backup'
 
 export function SongList({
   songs,
   onSelect,
   onAdd,
+  onImportRequested,
 }: {
   songs: SongRecord[]
   onSelect: (id: string) => void
   onAdd: () => void
+  onImportRequested: (songs: SongRecord[]) => void
 }) {
+  const [query, setQuery] = useState('')
+  const [importError, setImportError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return songs
+    return songs.filter(
+      (song) => song.title.toLowerCase().includes(q) || song.artist.toLowerCase().includes(q)
+    )
+  }, [songs, query])
+
+  function handleExport() {
+    const json = exportLibraryJson(songs)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `piano-improv-library-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function handleFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const text = await file.text()
+      const imported = parseLibraryImport(text)
+      setImportError(null)
+      onImportRequested(imported)
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return (
     <div className="song-list">
       <div className="song-list-header">
         <h1>Your songs</h1>
-        <button onClick={onAdd}>+ Add song</button>
+        <div className="song-list-actions">
+          <button onClick={handleExport} disabled={songs.length === 0}>
+            Export
+          </button>
+          <button onClick={() => fileInputRef.current?.click()}>Import</button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            hidden
+            onChange={handleFileChosen}
+          />
+          <button onClick={onAdd}>+ Add song</button>
+        </div>
       </div>
+
+      {importError && <p className="form-error">{importError}</p>}
 
       {songs.length === 0 ? (
         <p className="empty-state">
-          No songs yet. Add one by pasting a chord chart (ChordPro format) to get started.
+          No songs yet. Add one by pasting a chord chart (ChordPro format), or import a backup.
         </p>
       ) : (
-        <ul>
-          {songs.map((song) => (
-            <li key={song.id}>
-              <button className="song-list-item" onClick={() => onSelect(song.id)}>
-                <span className="song-title">{song.title}</span>
-                {song.artist && <span className="song-artist">{song.artist}</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <>
+          <input
+            className="song-search"
+            type="search"
+            placeholder="Search by title or artist"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search songs"
+          />
+          {filtered.length === 0 ? (
+            <p className="empty-state">No songs match "{query}".</p>
+          ) : (
+            <ul>
+              {filtered.map((song) => (
+                <li key={song.id}>
+                  <button className="song-list-item" onClick={() => onSelect(song.id)}>
+                    <span className="song-title">{song.title}</span>
+                    {song.artist && <span className="song-artist">{song.artist}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   )
