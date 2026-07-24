@@ -87,3 +87,11 @@ export async function deleteSetlist(id: string): Promise<void> {
   const db = await getDB()
   await db.delete('setlists', id)
 }
+
+/** Upserts by id — used to restore/merge a library backup. */
+export async function saveSetlists(setlists: Setlist[]): Promise<void> {
+  const db = await getDB()
+  const tx = db.transaction('setlists', 'readwrite')
+  await Promise.all(setlists.map((setlist) => tx.store.put(setlist)))
+  await tx.done
+}

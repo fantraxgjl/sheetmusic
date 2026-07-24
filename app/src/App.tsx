@@ -14,9 +14,11 @@ import {
   listSetlists,
   listSongs,
   saveSetlist,
+  saveSetlists,
   saveSong,
   saveSongs,
 } from './lib/db'
+import type { LibraryImport } from './lib/backup'
 import { useOnlineStatus } from './lib/useOnlineStatus'
 import './App.css'
 
@@ -72,9 +74,11 @@ function App() {
     setView({ name: 'list' })
   }
 
-  async function handleImportRequested(imported: SongRecord[]) {
-    await saveSongs(imported)
+  async function handleImportRequested(imported: LibraryImport) {
+    await saveSongs(imported.songs)
+    await saveSetlists(imported.setlists)
     setSongs(await listSongs())
+    setSetlists(await listSetlists())
   }
 
   async function handleCreateSetlist(input: { name: string; songIds: string[] }) {
@@ -119,6 +123,7 @@ function App() {
       {view.name === 'list' && (
         <SongList
           songs={songs}
+          setlists={setlists}
           onSelect={(id) => setView({ name: 'song', id })}
           onAdd={() => setView({ name: 'add' })}
           onImportRequested={handleImportRequested}

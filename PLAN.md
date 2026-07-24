@@ -321,19 +321,29 @@ client-side pieces are done:
   glancing at a chart under stage lighting — verified visually via
   screenshot.
 
-**Still open — cross-device sync**: this needs an actual decision, not an
-assumption. Realistic options, roughly in order of setup effort:
-1. **Manual sync via the existing export/import** — zero new infrastructure
-   (already built in phase 1); you'd export on one device and import on
-   another through whatever file-sharing you already use (a cloud drive
-   folder, AirDrop, email). Free, but not automatic.
-2. **A small hosted backend** (e.g. a lightweight API + SQLite/Postgres) —
-   real sync, but means picking a host, likely a small recurring cost, and
-   something to maintain.
-3. **A managed backend-as-a-service** (e.g. Supabase/Firebase) — less to
-   build than #2, but requires creating an account there and wiring up its
-   SDK/auth even for single-user use.
+**Cross-device sync — decided (for now)**: manual sync via export/import
+(option 1 above), no new infrastructure. Two gaps found while finalizing
+this were fixed:
+- **Setlists weren't included in export/import** — the backup code
+  (`lib/backup.ts`) predates setlists and only ever handled songs.
+  `exportLibraryJson`/`parseLibraryImport` now bundle both, with
+  backward-compatible parsing of old export files (a bare song array, or
+  `{songs: [...]}` with no `setlists` key) — verified an old-format file
+  still imports cleanly.
+- **Export now prefers the OS share sheet** (`navigator.share` with files —
+  AirDrop, Drive, Messages, etc.) when the device supports it, falling back
+  to a plain file download everywhere else (confirmed: not supported in
+  this environment's headless Chromium, and the fallback path was what
+  actually fired and worked).
 
-None of these is clearly "correct" without knowing whether you'd rather
-avoid any ongoing cost/maintenance (favors #1), want it to feel automatic
-(favors #2/#3), or already use one of these providers for something else.
+Verified end-to-end: created songs + a setlist, exported, deleted
+everything, re-imported, and both the songs and the setlist's order came
+back correctly.
+
+Known limits of this approach, worth remembering: it's a manual step every
+time (nothing pushes automatically), merge semantics are "last import wins"
+per song ID with no conflict detection, and deletions don't propagate
+(importing an old backup can resurrect a song you deleted elsewhere). If
+that becomes a real friction point, options #2/#3 from the original
+list — a small hosted backend, or a managed backend-as-a-service — are
+still on the table.

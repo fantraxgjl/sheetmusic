@@ -1,18 +1,21 @@
 import { useMemo, useRef, useState } from 'react'
 import type { SongRecord } from '../lib/song'
-import { exportLibraryJson, parseLibraryImport } from '../lib/backup'
+import type { Setlist } from '../lib/setlist'
+import { exportLibraryJson, parseLibraryImport, type LibraryImport } from '../lib/backup'
 
 export function SongList({
   songs,
+  setlists,
   onSelect,
   onAdd,
   onImportRequested,
   onOpenSetlists,
 }: {
   songs: SongRecord[]
+  setlists: Setlist[]
   onSelect: (id: string) => void
   onAdd: () => void
-  onImportRequested: (songs: SongRecord[]) => void
+  onImportRequested: (imported: LibraryImport) => void
   onOpenSetlists: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -27,13 +30,31 @@ export function SongList({
     )
   }, [songs, query])
 
-  function handleExport() {
-    const json = exportLibraryJson(songs)
+  async function handleExport() {
+    const json = exportLibraryJson(songs, setlists)
+    const filename = `piano-improv-library-${new Date().toISOString().slice(0, 10)}.json`
     const blob = new Blob([json], { type: 'application/json' })
+
+    // Prefer the OS share sheet (AirDrop, Drive, Messages, etc.) when
+    // available — a plain download works everywhere but is a clunkier way
+    // to get a file onto another device, especially on mobile.
+    if (navigator.canShare && navigator.share) {
+      const file = new File([blob], filename, { type: 'application/json' })
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: 'Piano Improv library backup' })
+          return
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') return // user cancelled the share sheet
+          // otherwise fall through to a plain download
+        }
+      }
+    }
+
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `piano-improv-library-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = filename
     a.click()
     URL.revokeObjectURL(url)
   }
